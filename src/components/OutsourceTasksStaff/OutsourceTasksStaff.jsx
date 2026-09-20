@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router';
-import { getOutsourceTasks } from '../../services/outsourceTaskService';
+import { useEffect, useState, useContext } from 'react';
+import { getAllOutsourceTasks, deleteOutsourceTask } from '../../services/outsourceTaskService';
 import { getCampaigns } from '../../services/campaignService';
-import './OutsourceAllTasks.css';
+import { getCampaignRequests } from '../../services/campaignRequestService';
+import { UserContext } from '../../contexts/UserContext';
+import './OutsourceTasksStaff.css';
 
 const formatLabel = (str = '') => {
     if (!str) return '—';
@@ -16,31 +17,29 @@ const formatLabel = (str = '') => {
         .join(' ');
 };
 
-const formatDate = (dateString) => {
-    if (!dateString) return '—';
-    const date = new Date(dateString);
-    return isNaN(date.getTime()) ? dateString : date.toLocaleDateString();
-};
-
-const OutsourceAllTasks = () => {
-    const navigate = useNavigate();
+const OutsourceTasksStaff = () => {
+    const { user } = useContext(UserContext);
     const [tasks, setTasks] = useState([]);
     const [campaigns, setCampaigns] = useState([]);
+    const [campaignRequests, setCampaignRequests] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState('');
+    const [successMessage, setSuccessMessage] = useState('');
 
     useEffect(() => {
         const fetchTasksAndCampaigns = async () => {
             try {
                 setIsLoading(true);
-                const [tasksData, campaignsData] = await Promise.all([
-                    getOutsourceTasks(),
+                const [tasksData, campaignsData, requestsData] = await Promise.all([
+                    getAllOutsourceTasks(),
                     getCampaigns().catch(() => []),
+                    getCampaignRequests().catch(() => []),
                 ]);
                 setTasks(tasksData || []);
                 setCampaigns(campaignsData || []);
+                setCampaignRequests(requestsData || []);
             } catch (err) {
-                setError(err.message || 'Failed to load tasks');
+                setError(err.message || 'Failed to load outsource tasks');
             } finally {
                 setIsLoading(false);
             }
@@ -54,9 +53,9 @@ const OutsourceAllTasks = () => {
             return task.campaignId.requestId?.title || task.campaignId.title || '';
         }
         if (task.campaignId) {
-            const matched = campaigns.find((c) => c._id === task.campaignId);
-            if (matched) {
-                return matched.requestId?.title || matched.title || '';
+            const matchedCamp = campaigns.find((c) => c._id === task.campaignId);
+            if (matchedCamp) {
+                return matchedCamp.requestId?.title || matchedCamp.title || '';
             }
         }
         if (task.campaignTitle) return task.campaignTitle;
@@ -64,25 +63,48 @@ const OutsourceAllTasks = () => {
         if (task.campaignRequestId && typeof task.campaignRequestId === 'object') {
             return task.campaignRequestId.title || '';
         }
+        if (task.campaignRequestId) {
+            const matchedReq = campaignRequests.find((r) => r._id === task.campaignRequestId);
+            if (matchedReq) return matchedReq.title;
+        }
         return formatLabel(task.serviceType);
+    };
+
+    const handleDelete = async (id) => {
+        try {
+            setError('');
+            await deleteOutsourceTask(id);
+            setTasks((prev) => prev.filter((t) => t._id !== id));
+            setSuccessMessage('Outsource task deleted successfully.');
+        } catch (err) {
+            setError(err.message || 'Failed to delete outsource task');
+        }
+    };
+
+    const formatDate = (dateString) => {
+        if (!dateString) return '—';
+        const date = new Date(dateString);
+        return isNaN(date.getTime()) ? dateString : date.toLocaleDateString();
     };
 
     if (isLoading) {
         return (
-            <main className="outsource-all-tasks">
-                <p className="tasks-loading">Loading tasks...</p>
+            <main>
+                <p>Loading outsource tasks...</p>
             </main>
         );
     }
 
     return (
-        <main className="outsource-all-tasks">
-            <h1>Tasks</h1>
+        <main className="outsource-tasks-staff">
+            <h1>Assigned Outsource Tasks</h1>
+            <p>List of all outsource tasks assigned to external agencies.</p>
 
-            {error && <p role="alert" className="tasks-error">{error}</p>}
+            {error && <p role="alert" style={{ color: 'red' }}>{error}</p>}
+            {successMessage && <p style={{ color: 'green' }}>{successMessage}</p>}
 
             {tasks.length === 0 ? (
-                <p className="tasks-empty">No tasks found.</p>
+                <p>No outsource tasks found.</p>
             ) : (
                 <div className="tasks-cards-container">
                     {tasks.map((task) => (
@@ -101,11 +123,9 @@ const OutsourceAllTasks = () => {
                                 {formatDate(task.dueDate)}
                             </p>
                             <div className="task-card-actions">
-                                <button
-                                    type="button"
-                                    onClick={() => navigate(`/outsource-tasks/${task._id}`)}
-                                >
-                                    View Task
+                                <button type="button">Edit</button>
+                                <button type="button" onClick={() => handleDelete(task._id)}>
+                                    Delete
                                 </button>
                             </div>
                         </div>
@@ -116,4 +136,4 @@ const OutsourceAllTasks = () => {
     );
 };
 
-export default OutsourceAllTasks;
+export default OutsourceTasksStaff;
